@@ -1,0 +1,165 @@
+{
+  "name": "Move_New",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inspection",
+        "responseMode": "lastNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "name": "Webhook1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -660,
+        1460
+      ],
+      "id": "e1a98f38-6584-451c-8646-c477f1098729",
+      "webhookId": "47564f93-3590-41a7-9d68-bfe898b38087"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4.1-nano\",\n  \"temperature\": 0,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Compare the first image (move-in) with the second image (move-out) of this apartment. Output ONLY a JSON array of all damages in this format:\\n\\n[\\n  {\\n    \\\"location\\\": \\\"<room and position>\\\",\\n    \\\"description\\\": \\\"<damage description>\\\",\\n    \\\"category\\\": \\\"walls/floors/ceiling/etc.\\\",\\n    \\\"estimated_cost\\\": <estimated price in dollars as a number>\\n  }\\n]\\n\\nDo not add any other text. Only list damages that are visibly different in move-out vs move-in. Provide a realistic estimated cost for each damage based on typical repair costs. If there are no damages or the images are identical return json array empty.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": { \"url\": \"data:image/jpeg;base64,{{$json['image_movein_base64']}}\" }\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": { \"url\": \"data:image/jpeg;base64,{{$json['image_moveout_base64']}}\" }\n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -300,
+        1460
+      ],
+      "id": "80292488-11ea-486a-bde8-7fb31f205d54",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "GnsXf5vCgtfmSn5t",
+          "name": "Bearer Auth account 4"
+        },
+        "openAiApi": {
+          "id": "LYnEegKPveTxdF7V",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Robust Code node: handle named fields, autodetect, and parse single multipart 'data' blob.\n\nconst binary = items[0].binary || {};\nconst keys = Object.keys(binary || {});\n\n// Helper for existing binary entries\nfunction fileInfoFromKey(key) {\n  const f = binary[key];\n  return {\n    base64: f.data,\n    fileName: f.fileName,\n    mimeType: f.mimeType,\n    size: f.fileSize || null,\n    originalField: key\n  };\n}\n\n// 1) Prefer named fields\nif (binary.image_movein && binary.image_moveout) {\n  return [{\n    json: {\n      image_movein_base64: binary.image_movein.data,\n      image_moveout_base64: binary.image_moveout.data,\n      image_movein_info: { fileName: binary.image_movein.fileName, mimeType: binary.image_movein.mimeType },\n      image_moveout_info: { fileName: binary.image_moveout.fileName, mimeType: binary.image_moveout.mimeType }\n    }\n  }];\n}\n\n// 2) If there are two or more image/* binary fields, map first two to movein/moveout\nconst imageKeys = keys.filter(k => {\n  const f = binary[k];\n  return f && typeof f.mimeType === 'string' && f.mimeType.startsWith('image/');\n});\n\nif (imageKeys.length >= 2) {\n  const inKey = imageKeys[0], outKey = imageKeys[1];\n  return [{\n    json: {\n      image_movein_base64: binary[inKey].data,\n      image_moveout_base64: binary[outKey].data,\n      image_movein_info: { originalField: inKey, fileName: binary[inKey].fileName, mimeType: binary[inKey].mimeType },\n      image_moveout_info: { originalField: outKey, fileName: binary[outKey].fileName, mimeType: binary[outKey].mimeType }\n    }\n  }];\n}\n\n// 3) If we got a single 'data' binary field (raw multipart body), try to parse it\nif (binary.data && binary.data.data) {\n  try {\n    const wholeBase64 = binary.data.data;                  // base64 string of whole multipart body\n    const wholeBuf = Buffer.from(wholeBase64, 'base64');   // raw bytes\n    const wholeLatin = wholeBuf.toString('latin1');        // latin1 preserves byte values\n\n    // find boundary (first occurrence of a line starting with --)\n    const bMatch = wholeLatin.match(/--([^\\r\\n]+)/);\n    if (!bMatch) throw new Error('Could not detect multipart boundary in body.');\n\n    const boundary = bMatch[1];\n    // split into parts; ignore preamble and final '--'\n    const rawParts = wholeLatin.split('--' + boundary).slice(1, -1);\n\n    const extracted = []; // will hold {name, filename, mimeType, buf}\n    for (const rawPart of rawParts) {\n      const part = rawPart.replace(/^\\r\\n/, '').replace(/\\r\\n$/, ''); // trim edge CRLF\n      if (!part) continue;\n\n      const headerEnd = part.indexOf('\\r\\n\\r\\n');\n      if (headerEnd === -1) continue; // skip if malformed\n\n      const headerText = part.slice(0, headerEnd);\n      const bodyLatin = part.slice(headerEnd + 4); // the rest = binary body (latin1)\n      // Convert bodyLatin back to bytes\n      const partBuf = Buffer.from(bodyLatin, 'latin1');\n\n      // parse headers\n      const headerLines = headerText.split('\\r\\n').map(l => l.trim()).filter(Boolean);\n      let disposition = headerLines.find(l => l.toLowerCase().startsWith('content-disposition'));\n      let contentTypeLine = headerLines.find(l => l.toLowerCase().startsWith('content-type'));\n\n      if (!disposition) continue; // skip non-file parts\n\n      // name and filename\n      const nameMatch = disposition.match(/name=\"([^\"]+)\"/);\n      const filenameMatch = disposition.match(/filename=\"([^\"]+)\"/);\n      const fieldName = nameMatch ? nameMatch[1] : null;\n      const filename = filenameMatch ? filenameMatch[1] : null;\n      const mimeType = contentTypeLine ? contentTypeLine.split(':')[1].trim() : 'application/octet-stream';\n\n      extracted.push({\n        fieldName,\n        fileName: filename,\n        mimeType,\n        buf: partBuf\n      });\n    }\n\n    if (extracted.length === 0) {\n      throw new Error('No file parts found inside multipart body.');\n    }\n\n    // Map extracted parts to image_movein / image_moveout if possible\n    const out = {};\n    // Try to find by expected names\n    const moveInPart = extracted.find(p => p.fieldName && p.fieldName.toLowerCase().includes('movein')) || extracted[0];\n    const moveOutPart = extracted.find(p => p.fieldName && p.fieldName.toLowerCase().includes('moveout')) || extracted[1] || extracted[0];\n\n    out.image_movein_base64 = moveInPart.buf.toString('base64');\n    out.image_moveout_base64 = moveOutPart.buf.toString('base64');\n    out.image_movein_info = { originalField: moveInPart.fieldName || null, fileName: moveInPart.fileName || null, mimeType: moveInPart.mimeType };\n    out.image_moveout_info = { originalField: moveOutPart.fieldName || null, fileName: moveOutPart.fileName || null, mimeType: moveOutPart.mimeType };\n\n    return [{ json: out }];\n\n  } catch (err) {\n    throw new Error('Failed to parse single multipart data blob: ' + err.message);\n  }\n}\n\n// 4) Nothing found — provide helpful debug message\nthrow new Error(\n  \"No image binary fields found. Received binary keys: \" +\n  (keys.length ? keys.join(', ') : '(none)') +\n  \". Expected 'image_movein' and 'image_moveout'.\"\n);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        1460
+      ],
+      "id": "00f91551-a7e3-4b3f-a205-beebb17fb723",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        100,
+        1460
+      ],
+      "id": "a8f1c394-8fba-487c-9323-c62f5de4e9a1",
+      "name": "Respond to Webhook",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the raw OpenAI API response from previous node\nconst response = $json; \n\n// Extract the assistant's content string\nconst content = response.choices[0].message.content;\n\n// Parse that string into a real array\nlet damages;\ntry {\n  damages = JSON.parse(content);\n} catch (err) {\n  throw new Error(\"Failed to parse damages JSON: \" + err.message);\n}\n\n// Ensure it's actually an array\nif (!Array.isArray(damages)) {\n  throw new Error(\"Damages is not an array.\");\n}\n\n// Calculate total estimated cost\nconst totalEstimatedCost = damages.reduce((sum, d) => {\n  const cost = typeof d.estimated_cost === 'number' ? d.estimated_cost : 0;\n  return sum + cost;\n}, 0);\n\n// Return a single JSON object containing damages and total cost\nreturn [{\n  json: {\n    damages,\n    totalEstimatedCost\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        1460
+      ],
+      "id": "42d12395-e9af-42d2-bafa-acb5e1fa2eea",
+      "name": "Code1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "6a16362e-179e-4248-b219-0ae7916ee10d",
+  "meta": {
+    "instanceId": "1bd6eab0f95021e03a6b7be0f427465c1313b130afd3d4dcff15686cac824f43"
+  },
+  "id": "ZxfV73TJpAU5IikQ",
+  "tags": []
+}
