@@ -1,75 +1,84 @@
+# Move-in/Move-out Inspection Automator
 
-Project Report: Move Inspection
+A web application to automate property move-in/move-out inspections. Upload before and after images, analyze them via a FastAPI backend (with n8n workflow integration), and receive a detailed report of detected damages and estimated costs.
 
-Overview
+---
 
-This project is a web-based Move-in/Move-out Inspection Automator. It allows users to upload "move-in" and "move-out" images of a property, sends them to a FastAPI backend for analysis, and displays an inspection report with detected damages and estimated costs. The backend can forward images to an n8n workflow for further processing.
+## Features
 
-Main Components
+- Upload move-in and move-out images via a simple web interface
+- FastAPI backend forwards images to an n8n webhook for analysis
+- Displays a structured, user-friendly report of damages and estimated costs
+- Modern, responsive UI
 
-1. Frontend (index.html)
+---
 
-Features:
+## Getting Started
 
-Responsive UI for uploading move-in and move-out images.
-Displays a formatted inspection report with damages and estimated costs.
-Uses JavaScript to handle file uploads, API requests, and report rendering.
+### 1. Clone the Repository
 
-Key Elements:
+```sh
+git clone https://github.com/KeenSight-AI-Demo-Apps/Move-Inspection-App-.git
+cd Move-Inspection-App-
+```
 
-File input fields for two images.
-"Analyze Images" button triggers the analysis.
-Inspection report area displays results in a table.
+### 2. Install Backend Dependencies
 
-API Integration:
+```sh
+pip install fastapi uvicorn httpx
+```
 
-Sends a POST request to /analyze endpoint on the backend with both images as multipart/form-data.
-Handles and displays the backend's JSON response.
+### 3. Run the Backend
 
-2. Backend (forwarder.py)
+```sh
+uvicorn forwarder:app --reload
+```
 
-Framework: FastAPI
+- The backend will be available at [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-Endpoints:
+### 4. Open the Frontend
 
-/ : Redirects to API docs.
-/analyze : Accepts two image files, forwards them to an n8n webhook (as multipart or JSON), and returns the response.
+- Open `index.html` in your browser (double-click or use Live Server in VS Code).
 
-Configurable:
+---
 
-n8n webhook URL and forwarding mode (multipart or JSON) are configurable via environment variables.
+## Configuration
 
-Error Handling:
+- **n8n Webhook URL:**  
+  Set the `N8N_WEBHOOK_URL` environment variable to your n8n webhook endpoint.  
+  Default: `http://localhost:5678/webhook/inspection`
 
-Returns HTTP 400 on file read errors or unknown forwarding modes.
+- **Forwarding Mode:**  
+  Set `FORWARD_MODE` to `multipart` or `json` (default: `multipart`).
 
-How It Works
+---
 
-User uploads images via the web interface.
-Frontend sends images to the FastAPI backend.
-Backend forwards images to the configured n8n webhook for analysis.
-n8n processes images (e.g., using AI or image comparison) and returns a JSON report.
-Frontend displays the report in a user-friendly table, including a summary and total estimated cost.
+## Usage
 
-How to Run
+1. Upload both move-in and move-out images.
+2. Click **Analyze Images**.
+3. View the inspection report with damages and estimated costs.
 
-Install dependencies:
+---
 
-Start the backend:
+## Project Structure
 
-Open index.html in your browser (double-click or use Live Server in VS Code).
-Upload images and analyze.
+```
+Move-Inspection-App-/
+│
+├── forwarder.py      # FastAPI backend
+├── index.html        # Frontend web page
+└── README.md         # Project documentation
+```
 
-Customization
+---
 
-n8n Webhook: Set the N8N_WEBHOOK_URL environment variable to point to your n8n instance.
-Forwarding Mode: Set FORWARD_MODE to multipart or json as needed.
+## License
 
-Notes
+---
 
-The project is designed for local testing and demo purposes. For production, restrict CORS and secure the backend.
-Some features (like PDF download) are present in code but commented out.
+## Credits
 
-Summary
-
-This project streamlines property inspection reporting by combining a modern web UI, a FastAPI backend, and n8n workflow automation. It is modular, easy to run locally, and ready for further extension or integration.
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [n8n](https://n8n.io/)
+- [jsPDF](https://github.com/parallax/jsPDF) (optional, for PDF
